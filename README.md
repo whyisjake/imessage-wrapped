@@ -2,7 +2,8 @@
 
 Your year in iMessage — emoji, reactions, and messaging stats.
 
-![Example output](example.png)
+<img width="606" height="930" alt="Screenshot 2026-02-17 at 3 34 01 PM" src="https://github.com/user-attachments/assets/e473dc2b-1d97-44b6-b5d1-9bf82f1754c0" />
+
 
 ## Quick Start
 
