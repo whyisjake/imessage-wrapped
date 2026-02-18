@@ -154,8 +154,8 @@ def main():
     # --- Top reactions overall ---
     print(f"\n🌟 Top Reactions (All)")
     cur.execute(f"""
-        SELECT 
-            COALESCE(associated_message_emoji, 
+        SELECT
+            COALESCE(associated_message_emoji,
                 CASE associated_message_type
                     WHEN 2000 THEN '❤️'
                     WHEN 2001 THEN '👍'
@@ -166,7 +166,7 @@ def main():
                 END
             ) as emoji,
             COUNT(*) as cnt
-        FROM message 
+        FROM message
         WHERE {date_filter(YEAR)} AND associated_message_type >= 2000
         GROUP BY emoji
         HAVING emoji IS NOT NULL
@@ -175,6 +175,55 @@ def main():
     """)
     for emoji, cnt in cur.fetchall():
         print(f"   {emoji}  {cnt:,}")
+
+    # --- Top 5 most texted contacts (yearly) ---
+    print(f"\n👥 Top 5 Most Texted")
+    cur.execute(f"""
+        SELECT
+            h.id as contact,
+            COUNT(*) as cnt
+        FROM message m
+        JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+        JOIN chat c ON cmj.chat_id = c.ROWID
+        JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
+        JOIN handle h ON chj.handle_id = h.ROWID
+        WHERE {date_filter(YEAR)} AND m.associated_message_type = 0
+        GROUP BY h.id
+        ORDER BY cnt DESC
+        LIMIT 5
+    """)
+    top_contacts = cur.fetchall()
+    if top_contacts:
+        for contact, cnt in top_contacts:
+            print(f"   {contact}  {cnt:,}")
+    else:
+        print("   (no contact data available)")
+
+    # --- Top 5 most texted by month ---
+    print(f"\n📅 Top 5 Most Texted by Month")
+    for i, month_name in enumerate(months, 1):
+        month_str = f"{i:02d}"
+        cur.execute(f"""
+            SELECT
+                h.id as contact,
+                COUNT(*) as cnt
+            FROM message m
+            JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+            JOIN chat c ON cmj.chat_id = c.ROWID
+            JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
+            JOIN handle h ON chj.handle_id = h.ROWID
+            WHERE {date_filter(YEAR)}
+            AND m.associated_message_type = 0
+            AND strftime('%m', datetime(m.date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch')) = '{month_str}'
+            GROUP BY h.id
+            ORDER BY cnt DESC
+            LIMIT 5
+        """)
+        month_data = cur.fetchall()
+        if month_data:
+            print(f"\n   {month_name}:")
+            for contact, cnt in month_data:
+                print(f"      {contact}  {cnt:,}")
     
     print("\n" + "=" * 40)
     print(f"📊 Data from ~/Library/Messages/chat.db")
