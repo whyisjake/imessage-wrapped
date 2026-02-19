@@ -88,13 +88,23 @@ def get_contact_name(contact_id):
                 else:
                     search_patterns = [normalized_id]
 
+                # Also add a digits-only pattern to handle formatted numbers like (503) 555-1234
+                digits_only = ''.join(filter(str.isdigit, normalized_id))
+                if digits_only and digits_only not in search_patterns:
+                    if len(digits_only) == 11 and digits_only.startswith('1'):
+                        search_patterns.extend([digits_only, digits_only[1:]])
+                    else:
+                        search_patterns.append(digits_only)
+
                 # Query the Contacts database for a matching phone number or email
                 for pattern in search_patterns:
                     cur.execute("""
                         SELECT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
                         FROM ZABCDRECORD
                         JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
-                        WHERE ZABCDPHONENUMBER.ZFULLNUMBER LIKE ?
+                        WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            ZABCDPHONENUMBER.ZFULLNUMBER,
+                            ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?
                         LIMIT 1
                     """, (f"%{pattern}%",))
                     result = cur.fetchone()
