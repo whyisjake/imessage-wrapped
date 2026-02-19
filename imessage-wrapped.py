@@ -2,20 +2,36 @@
 """
 iMessage Wrapped — Your year in emoji and reactions
 
-Usage: python3 imessage-wrapped.py [year]
+Usage: python3 imessage-wrapped.py [year] [--csv [filename.csv]]
 Default: Current year - 1
 
 Requires: Full Disk Access for Terminal
 (System Settings → Privacy & Security → Full Disk Access)
 """
 
+import csv
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-# Default to last year
-YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else datetime.now().year - 1
+# Parse arguments: optional year, optional --csv flag with optional filename
+_args = sys.argv[1:]
+_csv_flag = "--csv" in _args
+_csv_index = _args.index("--csv") if _csv_flag else -1
+_csv_filename = None
+if _csv_flag:
+    # Check if a filename follows --csv (not a year or another flag)
+    if (_csv_index + 1 < len(_args)
+            and not _args[_csv_index + 1].startswith("--")
+            and not _args[_csv_index + 1].isdigit()):
+        _csv_filename = _args[_csv_index + 1]
+        _args = [a for i, a in enumerate(_args) if i not in (_csv_index, _csv_index + 1)]
+    else:
+        _args = [a for i, a in enumerate(_args) if i != _csv_index]
+
+YEAR = int(_args[0]) if _args else datetime.now().year - 1
+CSV_EXPORT = _csv_flag
 DB_PATH = Path.home() / "Library/Messages/chat.db"
 CONTACTS_DB_PATH = Path.home() / "Library/Application Support/AddressBook/AddressBook-v22.abcddb"
 
@@ -125,12 +141,24 @@ def get_contact_name(contact_id):
     # Return original contact_id if no name found
     return contact_id
 
+def write_csv(csv_rows, year, filename=None):
+    """Write collected stats to a CSV file."""
+    filename = filename or f"imessage-wrapped-{year}.csv"
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Section", "Label", "Value"])
+        writer.writerows(csv_rows)
+    print(f"\n📄 CSV saved to {filename}")
+
+
 def main():
     print(f"\n🎁 iMessage Wrapped {YEAR}\n")
     print("=" * 40)
 
     db = get_db()
     cur = db.cursor()
+
+    csv_rows = []
 
     # --- Message counts ---
     cur.execute(f"""
@@ -152,6 +180,11 @@ def main():
     print(f"   Total:    {total:,}")
     print(f"   Sent:     {sent:,}")
     print(f"   Received: {received:,}")
+    csv_rows += [
+        ("Messages", "Total", total),
+        ("Messages", "Sent", sent),
+        ("Messages", "Received", received),
+    ]
 
     # --- Reaction counts ---
     cur.execute(f"""
@@ -168,6 +201,10 @@ def main():
     print(f"\n💬 Reactions")
     print(f"   Given:    {given:,}")
     print(f"   Received: {got:,}")
+    csv_rows += [
+        ("Reactions", "Given", given),
+        ("Reactions", "Received", got),
+    ]
 
     # --- Your tapback style (given) ---
     print(f"\n🏆 Your Reaction Style")
@@ -185,6 +222,7 @@ def main():
         for row in rows:
             emoji = TAPBACKS.get(row[0], "?")
             print(f"   {emoji}  {row[1]:,}")
+            csv_rows.append(("Reaction Style", emoji, row[1]))
     else:
         print("   (no reactions given)")
 
@@ -204,6 +242,7 @@ def main():
         print(f"\n🎯 Your Custom Reactions")
         for emoji, cnt in customs:
             print(f"   {emoji}  {cnt}")
+            csv_rows.append(("Custom Reactions", emoji, cnt))
 
     # --- Monthly volume ---
     print(f"\n📈 Messages by Month")
@@ -224,6 +263,7 @@ def main():
         cnt = data.get(f"{i:02d}", 0)
         bar = "█" * int(20 * cnt / max_cnt) if cnt else ""
         print(f"   {name}  {bar} {cnt:,}")
+        csv_rows.append(("Messages by Month", name, cnt))
 
     # --- Top reactions overall ---
     print(f"\n🌟 Top Reactions (All)")
@@ -249,6 +289,7 @@ def main():
     """)
     for emoji, cnt in cur.fetchall():
         print(f"   {emoji}  {cnt:,}")
+        csv_rows.append(("Top Reactions", emoji, cnt))
 
     # --- Top 10 most texted contacts (yearly) ---
     print(f"\n👥 Top 10 Most Texted")
@@ -271,6 +312,7 @@ def main():
         for contact, cnt in top_contacts:
             name = get_contact_name(contact)
             print(f"   {name}  {cnt:,}")
+            csv_rows.append(("Top Contacts", name, cnt))
     else:
         print("   (no contact data available)")
 
@@ -300,10 +342,14 @@ def main():
             for contact, cnt in month_data:
                 name = get_contact_name(contact)
                 print(f"      {name}  {cnt:,}")
+                csv_rows.append((f"Top Contacts by Month", f"{month_name} - {name}", cnt))
 
     print("\n" + "=" * 40)
     print(f"📊 Data from ~/Library/Messages/chat.db")
     print(f"🕐 Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+
+    if CSV_EXPORT:
+        write_csv(csv_rows, YEAR, _csv_filename)
 
     db.close()
 
