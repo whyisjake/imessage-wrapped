@@ -17,6 +17,7 @@ from pathlib import Path
 # Default to last year
 YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else datetime.now().year - 1
 DB_PATH = Path.home() / "Library/Messages/chat.db"
+CONTACTS_DB_PATH = Path.home() / "Library/Application Support/AddressBook/AddressBook-v22.abcddb"
 
 # iMessage stores dates as nanoseconds since 2001-01-01
 APPLE_EPOCH_OFFSET = 978307200
@@ -47,9 +48,82 @@ def get_db():
 def date_filter(year):
     """SQL WHERE clause for filtering by year."""
     return f"""
-        datetime(date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch') >= '{year}-01-01' 
+        datetime(date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch') >= '{year}-01-01'
         AND datetime(date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch') < '{year + 1}-01-01'
     """
+
+def get_contact_name(contact_id):
+    """
+    Look up a contact's name from the Contacts database.
+    Falls back to the contact_id (phone/email) if not found.
+    """
+    # Try multiple common Contacts database locations
+    contacts_paths = [
+        CONTACTS_DB_PATH,
+        Path.home() / "Library/Application Support/AddressBook/Sources/*/AddressBook-v22.abcddb"
+    ]
+
+    for path_pattern in contacts_paths:
+        # Handle glob patterns
+        if '*' in str(path_pattern):
+            import glob
+            matching_paths = glob.glob(str(path_pattern))
+            paths_to_try = [Path(p) for p in matching_paths]
+        else:
+            paths_to_try = [path_pattern]
+
+        for contacts_path in paths_to_try:
+            if not contacts_path.exists():
+                continue
+
+            try:
+                contacts_db = sqlite3.connect(f"file:{contacts_path}?mode=ro", uri=True)
+                cur = contacts_db.cursor()
+
+                # Normalize the contact_id for comparison
+                normalized_id = contact_id.strip()
+                if normalized_id.startswith('+'):
+                    # Try with and without country code
+                    search_patterns = [normalized_id, normalized_id[1:], normalized_id[2:]]
+                else:
+                    search_patterns = [normalized_id]
+
+                # Query the Contacts database for a matching phone number or email
+                for pattern in search_patterns:
+                    cur.execute("""
+                        SELECT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
+                        FROM ZABCDRECORD
+                        JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
+                        WHERE ZABCDPHONENUMBER.ZFULLNUMBER LIKE ?
+                        LIMIT 1
+                    """, (f"%{pattern}%",))
+                    result = cur.fetchone()
+
+                    if not result:
+                        # Try email lookup
+                        cur.execute("""
+                            SELECT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
+                            FROM ZABCDRECORD
+                            JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
+                            WHERE ZABCDEMAILADDRESS.ZADDRESS = ?
+                            LIMIT 1
+                        """, (pattern,))
+                        result = cur.fetchone()
+
+                    if result:
+                        first_name, last_name = result
+                        contacts_db.close()
+                        # Build full name
+                        parts = [p for p in [first_name, last_name] if p]
+                        return " ".join(parts) if parts else contact_id
+
+                contacts_db.close()
+            except (sqlite3.OperationalError, sqlite3.DatabaseError):
+                # Database access failed, continue to next path
+                continue
+
+    # Return original contact_id if no name found
+    return contact_id
 
 def main():
     print(f"\n🎁 iMessage Wrapped {YEAR}\n")
@@ -195,7 +269,8 @@ def main():
     top_contacts = cur.fetchall()
     if top_contacts:
         for contact, cnt in top_contacts:
-            print(f"   {contact}  {cnt:,}")
+            name = get_contact_name(contact)
+            print(f"   {name}  {cnt:,}")
     else:
         print("   (no contact data available)")
 
@@ -223,7 +298,8 @@ def main():
         if month_data:
             print(f"\n   {month_name}:")
             for contact, cnt in month_data:
-                print(f"      {contact}  {cnt:,}")
+                name = get_contact_name(contact)
+                print(f"      {name}  {cnt:,}")
     
     print("\n" + "=" * 40)
     print(f"📊 Data from ~/Library/Messages/chat.db")
