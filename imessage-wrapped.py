@@ -128,53 +128,53 @@ def get_contact_name(contact_id):
 def main():
     print(f"\n🎁 iMessage Wrapped {YEAR}\n")
     print("=" * 40)
-    
+
     db = get_db()
     cur = db.cursor()
-    
+
     # --- Message counts ---
     cur.execute(f"""
-        SELECT 
+        SELECT
             COUNT(*) as total,
             SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) as sent,
             SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as received
-        FROM message 
+        FROM message
         WHERE {date_filter(YEAR)} AND associated_message_type = 0
     """)
     total, sent, received = cur.fetchone()
-    
+
     if total == 0:
         print(f"No messages found for {YEAR}.")
         print("Try a different year: python3 imessage-wrapped.py 2024")
         sys.exit(0)
-    
+
     print(f"\n📱 Messages")
     print(f"   Total:    {total:,}")
     print(f"   Sent:     {sent:,}")
     print(f"   Received: {received:,}")
-    
+
     # --- Reaction counts ---
     cur.execute(f"""
-        SELECT 
+        SELECT
             SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) as given,
             SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as received
-        FROM message 
+        FROM message
         WHERE {date_filter(YEAR)} AND associated_message_type >= 2000
     """)
     given, got = cur.fetchone()
     given = given or 0
     got = got or 0
-    
+
     print(f"\n💬 Reactions")
     print(f"   Given:    {given:,}")
     print(f"   Received: {got:,}")
-    
+
     # --- Your tapback style (given) ---
     print(f"\n🏆 Your Reaction Style")
     cur.execute(f"""
         SELECT associated_message_type, COUNT(*) as cnt
-        FROM message 
-        WHERE {date_filter(YEAR)} 
+        FROM message
+        WHERE {date_filter(YEAR)}
         AND associated_message_type BETWEEN 2000 AND 2005
         AND is_from_me = 1
         GROUP BY associated_message_type
@@ -187,12 +187,12 @@ def main():
             print(f"   {emoji}  {row[1]:,}")
     else:
         print("   (no reactions given)")
-    
+
     # --- Custom emoji reactions (given) ---
     cur.execute(f"""
         SELECT associated_message_emoji, COUNT(*) as cnt
-        FROM message 
-        WHERE {date_filter(YEAR)} 
+        FROM message
+        WHERE {date_filter(YEAR)}
         AND associated_message_emoji IS NOT NULL
         AND is_from_me = 1
         GROUP BY associated_message_emoji
@@ -204,14 +204,14 @@ def main():
         print(f"\n🎯 Your Custom Reactions")
         for emoji, cnt in customs:
             print(f"   {emoji}  {cnt}")
-    
+
     # --- Monthly volume ---
     print(f"\n📈 Messages by Month")
     cur.execute(f"""
-        SELECT 
+        SELECT
             strftime('%m', datetime(date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch')) as month,
             COUNT(*) as cnt
-        FROM message 
+        FROM message
         WHERE {date_filter(YEAR)} AND associated_message_type = 0
         GROUP BY month
         ORDER BY month
@@ -219,12 +219,12 @@ def main():
     months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     data = {row[0]: row[1] for row in cur.fetchall()}
     max_cnt = max(data.values()) if data else 1
-    
+
     for i, name in enumerate(months, 1):
         cnt = data.get(f"{i:02d}", 0)
         bar = "█" * int(20 * cnt / max_cnt) if cnt else ""
         print(f"   {name}  {bar} {cnt:,}")
-    
+
     # --- Top reactions overall ---
     print(f"\n🌟 Top Reactions (All)")
     cur.execute(f"""
@@ -251,7 +251,7 @@ def main():
         print(f"   {emoji}  {cnt:,}")
 
     # --- Top 5 most texted contacts (yearly) ---
-    print(f"\n👥 Top 5 Most Texted")
+    print(f"\n👥 Top 10 Most Texted")
     cur.execute(f"""
         SELECT
             h.id as contact,
@@ -264,7 +264,7 @@ def main():
         WHERE {date_filter(YEAR)} AND m.associated_message_type = 0
         GROUP BY h.id
         ORDER BY cnt DESC
-        LIMIT 5
+        LIMIT 10
     """)
     top_contacts = cur.fetchall()
     if top_contacts:
@@ -274,8 +274,8 @@ def main():
     else:
         print("   (no contact data available)")
 
-    # --- Top 5 most texted by month ---
-    print(f"\n📅 Top 5 Most Texted by Month")
+    # --- Top 10 most texted by month ---
+    print(f"\n📅 Top 10  Most Texted by Month")
     for i, month_name in enumerate(months, 1):
         month_str = f"{i:02d}"
         cur.execute(f"""
@@ -292,7 +292,7 @@ def main():
             AND strftime('%m', datetime(m.date/1000000000 + {APPLE_EPOCH_OFFSET}, 'unixepoch')) = '{month_str}'
             GROUP BY h.id
             ORDER BY cnt DESC
-            LIMIT 5
+            LIMIT 10
         """)
         month_data = cur.fetchall()
         if month_data:
@@ -300,11 +300,11 @@ def main():
             for contact, cnt in month_data:
                 name = get_contact_name(contact)
                 print(f"      {name}  {cnt:,}")
-    
+
     print("\n" + "=" * 40)
     print(f"📊 Data from ~/Library/Messages/chat.db")
     print(f"🕐 Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-    
+
     db.close()
 
 if __name__ == "__main__":
