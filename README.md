@@ -35,6 +35,11 @@ python3 imessage-wrapped.py
 python3 imessage-wrapped.py        # defaults to last year
 python3 imessage-wrapped.py 2024   # specific year
 python3 imessage-wrapped.py 2023   # any year with data
+
+# Export to CSV (for Excel / Google Sheets)
+python3 imessage-wrapped.py --csv                        # saves imessage-wrapped-<year>.csv
+python3 imessage-wrapped.py 2024 --csv                   # specific year, default filename
+python3 imessage-wrapped.py 2024 --csv my-stats.csv      # specific year and filename
 ```
 
 ## What You'll See
