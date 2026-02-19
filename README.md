@@ -45,6 +45,8 @@ python3 imessage-wrapped.py 2023   # any year with data
 - **Custom emoji reactions** (iOS 17+)
 - **Monthly message volume** — see your chattiest months
 - **Top reactions overall** — what emoji fly around your conversations
+- **Top 5 most texted** — your most frequent contacts over the year (with names from Contacts if available)
+- **Top 5 by month** — see how your top contacts change each month (with names from Contacts if available)
 
 ## Privacy
 
