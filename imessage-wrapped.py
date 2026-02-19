@@ -250,7 +250,7 @@ def main():
     for emoji, cnt in cur.fetchall():
         print(f"   {emoji}  {cnt:,}")
 
-    # --- Top 5 most texted contacts (yearly) ---
+    # --- Top 10 most texted contacts (yearly) ---
     print(f"\n👥 Top 10 Most Texted")
     cur.execute(f"""
         SELECT
