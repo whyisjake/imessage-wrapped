@@ -104,13 +104,23 @@ def get_contact_name(contact_id):
                 else:
                     search_patterns = [normalized_id]
 
+                # Also add a digits-only pattern to handle formatted numbers like (503) 555-1234
+                digits_only = ''.join(filter(str.isdigit, normalized_id))
+                if digits_only and digits_only not in search_patterns:
+                    if len(digits_only) == 11 and digits_only.startswith('1'):
+                        search_patterns.extend([digits_only, digits_only[1:]])
+                    else:
+                        search_patterns.append(digits_only)
+
                 # Query the Contacts database for a matching phone number or email
                 for pattern in search_patterns:
                     cur.execute("""
                         SELECT ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
                         FROM ZABCDRECORD
                         JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
-                        WHERE ZABCDPHONENUMBER.ZFULLNUMBER LIKE ?
+                        WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            ZABCDPHONENUMBER.ZFULLNUMBER,
+                            ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ?
                         LIMIT 1
                     """, (f"%{pattern}%",))
                     result = cur.fetchone()
@@ -290,6 +300,53 @@ def main():
     for emoji, cnt in cur.fetchall():
         print(f"   {emoji}  {cnt:,}")
         csv_rows.append(("Top Reactions", emoji, cnt))
+
+    # --- Blue vs Green Bubbles ---
+    cur.execute(f"""
+        SELECT
+            service,
+            COUNT(*) as cnt
+        FROM message
+        WHERE {date_filter(YEAR)} AND associated_message_type = 0
+        AND service IS NOT NULL
+        GROUP BY service
+        ORDER BY cnt DESC
+    """)
+    bubble_rows = cur.fetchall()
+    if bubble_rows:
+        print(f"\n🔵🟢 Blue vs Green Bubbles")
+        bubble_data = {row[0]: row[1] for row in bubble_rows}
+        bubble_total = sum(bubble_data.values())
+        imessage_cnt = bubble_data.get("iMessage", 0)
+        sms_cnt = bubble_data.get("SMS", 0)
+        imessage_pct = 100 * imessage_cnt / bubble_total if bubble_total else 0
+        sms_pct = 100 * sms_cnt / bubble_total if bubble_total else 0
+        print(f"   🔵 iMessage (blue):      {imessage_cnt:,}  ({imessage_pct:.1f}%)")
+        print(f"   🟢 SMS/Android (green):  {sms_cnt:,}  ({sms_pct:.1f}%)")
+
+    # --- Top green bubble contacts ---
+    cur.execute(f"""
+        SELECT
+            h.id as contact,
+            COUNT(*) as cnt
+        FROM message m
+        JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+        JOIN chat c ON cmj.chat_id = c.ROWID
+        JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
+        JOIN handle h ON chj.handle_id = h.ROWID
+        WHERE {date_filter(YEAR)}
+        AND m.associated_message_type = 0
+        AND m.service = 'SMS'
+        GROUP BY h.id
+        ORDER BY cnt DESC
+        LIMIT 10
+    """)
+    green_contacts = cur.fetchall()
+    if green_contacts:
+        print(f"\n📲 Top Green Bubble Contacts (consider Signal! 😎)")
+        for contact, cnt in green_contacts:
+            name = get_contact_name(contact)
+            print(f"   {name}  {cnt:,}")
 
     # --- Top 10 most texted contacts (yearly) ---
     print(f"\n👥 Top 10 Most Texted")
